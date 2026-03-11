@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KEDA Scaling Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a;
+    --text: #e2e4ea; --muted: #8b8fa3;
+    --kafka: #4fc3f7; --kafka-dim: #1a3a4a;
+    --pg: #ab47bc; --pg-dim: #3a1a42;
+    --green: #66bb6a; --orange: #ffa726; --red: #ef5350;
+  }
+  body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  header {
+    padding: 16px 32px; display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.3px; }
+  header h1 span { color: var(--muted); font-weight: 400; }
+  .status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 8px; animation: pulse 2s infinite; }
+  .status-dot.disconnected { background: var(--red); animation: none; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 24px 32px; height: calc(100vh - 60px); }
+
+  .panel {
+    background: var(--surface); border-radius: 12px; border: 1px solid var(--border);
+    padding: 24px; display: flex; flex-direction: column; gap: 20px; overflow: hidden;
+  }
+  .panel-header { display: flex; align-items: center; justify-content: space-between; }
+  .panel-title { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+  .panel-title .badge {
+    font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 20px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .kafka-badge { background: var(--kafka-dim); color: var(--kafka); }
+  .pg-badge { background: var(--pg-dim); color: var(--pg); }
+
+  .btn {
+    border: none; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; letter-spacing: 0.2px;
+  }
+  .btn:active { transform: scale(0.96); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-kafka { background: var(--kafka); color: #0a1929; }
+  .btn-kafka:hover:not(:disabled) { background: #81d4fa; }
+  .btn-pg { background: var(--pg); color: #fff; }
+  .btn-pg:hover:not(:disabled) { background: #ce93d8; }
+
+  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .metric-card {
+    background: var(--bg); border-radius: 8px; padding: 14px 16px;
+    border: 1px solid var(--border);
+  }
+  .metric-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; }
+  .metric-value { font-size: 32px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .metric-value.kafka-color { color: var(--kafka); }
+  .metric-value.pg-color { color: var(--pg); }
+
+  .pod-grid-wrap { background: var(--bg); border-radius: 8px; padding: 14px 16px; border: 1px solid var(--border); }
+  .pod-grid-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; }
+  .pod-grid { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pod-slot {
+    width: 36px; height: 36px; border-radius: 6px; transition: all 0.4s ease;
+    border: 1px solid var(--border); position: relative;
+  }
+  .pod-slot.active-kafka { background: var(--kafka); border-color: var(--kafka); box-shadow: 0 0 12px rgba(79,195,247,0.3); }
+  .pod-slot.active-pg { background: var(--pg); border-color: var(--pg); box-shadow: 0 0 12px rgba(171,71,188,0.3); }
+  .pod-slot.empty { background: transparent; }
+
+  .chart-wrap { flex: 1; min-height: 120px; max-height: 180px; position: relative; }
+  .chart-wrap canvas { width: 100% !important; height: 100% !important; }
+
+  .feed-wrap {
+    flex: 1; min-height: 0; background: var(--bg); border-radius: 8px;
+    border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden;
+  }
+  .feed-header {
+    font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px;
+    padding: 10px 14px 6px; flex-shrink: 0;
+  }
+  .feed { flex: 1; overflow-y: auto; padding: 0 14px 10px; }
+  .feed::-webkit-scrollbar { width: 4px; }
+  .feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .feed-item {
+    display: flex; align-items: center; gap: 10px; padding: 6px 0;
+    border-bottom: 1px solid var(--border); font-size: 12px;
+    animation: fadeSlideIn 0.3s ease;
+  }
+  .feed-item:last-child { border-bottom: none; }
+  @keyframes fadeSlideIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+
+  .feed-icon {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  }
+  .feed-icon.kafka { background: var(--kafka); box-shadow: 0 0 6px rgba(79,195,247,0.4); }
+  .feed-icon.pending { background: var(--orange); box-shadow: 0 0 6px rgba(255,167,38,0.4); }
+  .feed-icon.processing { background: var(--pg); box-shadow: 0 0 6px rgba(171,71,188,0.4); }
+  .feed-icon.completed { background: var(--green); box-shadow: 0 0 6px rgba(102,187,106,0.4); }
+
+  .feed-id { color: var(--muted); font-family: 'SF Mono', 'Cascadia Code', monospace; font-size: 11px; min-width: 50px; }
+  .feed-detail { color: var(--text); flex: 1; }
+  .feed-time { color: var(--muted); font-size: 10px; flex-shrink: 0; }
+  .feed-status {
+    font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
+    text-transform: uppercase; letter-spacing: 0.4px; flex-shrink: 0;
+  }
+  .feed-status.pending { background: #3d2b00; color: var(--orange); }
+  .feed-status.processing { background: var(--pg-dim); color: var(--pg); }
+  .feed-status.completed { background: #1a3320; color: var(--green); }
+
+  .feed-empty { color: var(--muted); font-size: 12px; padding: 16px 0; text-align: center; font-style: italic; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="status-dot" id="statusDot"></span>KEDA Scaling Dashboard <span>/ OpenShift</span></h1>
+</header>
+
+<div class="grid">
+  <!-- Demo 1: Kafka -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Kafka Consumer Scaling <span class="badge kafka-badge">Demo 1</span></div>
+      <button class="btn btn-kafka" id="burstBtn" onclick="sendBurst()">Send 500 Messages</button>
+    </div>
+    <div class="metrics">
+      <div class="metric-card">
+        <div class="metric-label">Consumer Pods</div>
+        <div class="metric-value kafka-color" id="kafkaPods">0</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Total Lag</div>
+        <div class="metric-value kafka-color" id="kafkaLag">0</div>
+      </div>
+    </div>
+    <div class="pod-grid-wrap">
+      <div class="pod-grid-label">Replicas (max 10)</div>
+      <div class="pod-grid" id="kafkaPodGrid"></div>
+    </div>
+    <div class="chart-wrap"><canvas id="kafkaChart"></canvas></div>
+    <div class="feed-wrap">
+      <div class="feed-header">Live Orders</div>
+      <div class="feed" id="kafkaFeed"><div class="feed-empty">Waiting for messages...</div></div>
+    </div>
+  </div>
+
+  <!-- Demo 2: PostgreSQL -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">PostgreSQL Job Queue <span class="badge pg-badge">Demo 2</span></div>
+      <button class="btn btn-pg" id="jobsBtn" onclick="insertJobs()">Insert 50 Jobs</button>
+    </div>
+    <div class="metrics">
+      <div class="metric-card">
+        <div class="metric-label">Worker Pods</div>
+        <div class="metric-value pg-color" id="pgPods">0</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Pending Jobs</div>
+        <div class="metric-value pg-color" id="pgPending">0</div>
+      </div>
+    </div>
+    <div class="pod-grid-wrap">
+      <div class="pod-grid-label">Replicas (max 5)</div>
+      <div class="pod-grid" id="pgPodGrid"></div>
+    </div>
+    <div class="chart-wrap"><canvas id="pgChart"></canvas></div>
+    <div class="feed-wrap">
+      <div class="feed-header">Recent Jobs</div>
+      <div class="feed" id="pgFeed"><div class="feed-empty">No jobs yet...</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const MAX_POINTS = 60;
+
+function initPodGrid(el, max, cls) {
+  el.innerHTML = '';
+  for (let i = 0; i < max; i++) {
+    const s = document.createElement('div');
+    s.className = 'pod-slot empty';
+    s.dataset.cls = cls;
+    el.appendChild(s);
+  }
+}
+
+function updatePodGrid(el, count, cls) {
+  const slots = el.children;
+  for (let i = 0; i < slots.length; i++) {
+    slots[i].className = i < count ? `pod-slot ${cls}` : 'pod-slot empty';
+  }
+}
+
+initPodGrid(document.getElementById('kafkaPodGrid'), 10, 'active-kafka');
+initPodGrid(document.getElementById('pgPodGrid'), 5, 'active-pg');
+
+const chartOpts = (label, color) => ({
+  type: 'line',
+  data: {
+    labels: Array(MAX_POINTS).fill(''),
+    datasets: [{
+      label, data: Array(MAX_POINTS).fill(0),
+      borderColor: color, backgroundColor: color + '18',
+      fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2,
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    animation: { duration: 300 },
+    scales: {
+      x: { display: false },
+      y: { beginAtZero: true, grid: { color: '#2a2d3a' }, ticks: { color: '#8b8fa3', font: { size: 11 } } }
+    },
+    plugins: { legend: { display: false } }
+  }
+});
+
+const pgChartConfig = {
+  type: 'line',
+  data: {
+    labels: Array(MAX_POINTS).fill(''),
+    datasets: [
+      { label: 'Pending', data: Array(MAX_POINTS).fill(0), borderColor: '#ffa726', backgroundColor: '#ffa72618', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 },
+      { label: 'Processing', data: Array(MAX_POINTS).fill(0), borderColor: '#ab47bc', backgroundColor: '#ab47bc18', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 },
+      { label: 'Completed', data: Array(MAX_POINTS).fill(0), borderColor: '#66bb6a', backgroundColor: '#66bb6a18', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 },
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    animation: { duration: 300 },
+    scales: {
+      x: { display: false },
+      y: { beginAtZero: true, grid: { color: '#2a2d3a' }, ticks: { color: '#8b8fa3', font: { size: 11 } } }
+    },
+    plugins: {
+      legend: { display: true, position: 'top', labels: { color: '#8b8fa3', boxWidth: 12, padding: 12, font: { size: 11 } } }
+    }
+  }
+};
+
+const kafkaChart = new Chart(document.getElementById('kafkaChart'), chartOpts('Consumer Lag', '#4fc3f7'));
+const pgChart = new Chart(document.getElementById('pgChart'), pgChartConfig);
+
+function pushData(chart, dsIndex, value) {
+  const ds = chart.data.datasets[dsIndex];
+  ds.data.push(value);
+  if (ds.data.length > MAX_POINTS) ds.data.shift();
+  if (dsIndex === 0) {
+    chart.data.labels.push('');
+    if (chart.data.labels.length > MAX_POINTS) chart.data.labels.shift();
+  }
+}
+
+let prevOrderIds = new Set();
+let prevJobSnapshot = '';
+
+const ORDER_TTL = 30000;
+
+function renderKafkaFeed(orders) {
+  const el = document.getElementById('kafkaFeed');
+  if (!orders || orders.length === 0) {
+    if (prevOrderIds.size > 0) {
+      el.innerHTML = '<div class="feed-empty">Waiting for messages...</div>';
+      prevOrderIds.clear();
+    }
+    return;
+  }
+  const html = orders.map(o => {
+    const isNew = !prevOrderIds.has(o.orderId);
+    const time = new Date(o.timestamp).toLocaleTimeString();
+    const fade = Math.max(0.15, 1 - (o.age || 0) / ORDER_TTL);
+    return `<div class="feed-item" style="opacity:${fade.toFixed(2)};${isNew ? '' : 'animation:none'}">
+      <span class="feed-icon kafka"></span>
+      <span class="feed-detail">${o.item} &times; ${o.quantity}</span>
+      <span class="feed-id">#${o.orderId.split('-').pop()}</span>
+      <span class="feed-time">${time}</span>
+    </div>`;
+  }).join('');
+  el.innerHTML = html;
+  prevOrderIds = new Set(orders.map(o => o.orderId));
+}
+
+function renderPgFeed(jobs) {
+  const el = document.getElementById('pgFeed');
+  if (!jobs || jobs.length === 0) return;
+  const snapshot = JSON.stringify(jobs);
+  const changed = snapshot !== prevJobSnapshot;
+  prevJobSnapshot = snapshot;
+  const html = jobs.map(j => {
+    const time = j.completed_at || j.started_at || j.created_at;
+    const timeStr = time ? new Date(time).toLocaleTimeString() : '';
+    return `<div class="feed-item" ${changed ? '' : 'style="animation:none"'}>
+      <span class="feed-icon ${j.status}"></span>
+      <span class="feed-id">#${j.id}</span>
+      <span class="feed-detail">${j.type || 'job'}</span>
+      <span class="feed-status ${j.status}">${j.status}</span>
+      <span class="feed-time">${timeStr}</span>
+    </div>`;
+  }).join('');
+  el.innerHTML = html;
+}
+
+const dot = document.getElementById('statusDot');
+let reconnectDelay = 1000;
+
+function connect() {
+  const es = new EventSource('/api/stream');
+
+  es.onopen = () => {
+    dot.classList.remove('disconnected');
+    reconnectDelay = 1000;
+  };
+
+  es.onmessage = (e) => {
+    const d = JSON.parse(e.data);
+
+    document.getElementById('kafkaPods').textContent = d.demo1.pods;
+    document.getElementById('kafkaLag').textContent = d.demo1.lag.total.toLocaleString();
+    updatePodGrid(document.getElementById('kafkaPodGrid'), d.demo1.pods, 'active-kafka');
+    pushData(kafkaChart, 0, d.demo1.lag.total);
+    kafkaChart.update();
+    renderKafkaFeed(d.demo1.recentOrders);
+
+    document.getElementById('pgPods').textContent = d.demo2.pods;
+    document.getElementById('pgPending').textContent = d.demo2.jobs.pending;
+    updatePodGrid(document.getElementById('pgPodGrid'), d.demo2.pods, 'active-pg');
+    pushData(pgChart, 0, d.demo2.jobs.pending);
+    pushData(pgChart, 1, d.demo2.jobs.processing);
+    pushData(pgChart, 2, d.demo2.jobs.completed);
+    pgChart.update();
+    renderPgFeed(d.demo2.recentJobs);
+  };
+
+  es.onerror = () => {
+    dot.classList.add('disconnected');
+    es.close();
+    setTimeout(connect, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+  };
+}
+
+connect();
+
+async function sendBurst() {
+  const btn = document.getElementById('burstBtn');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  try {
+    await fetch('/api/demo1/burst', { method: 'POST' });
+  } finally {
+    btn.textContent = 'Send 500 Messages';
+    btn.disabled = false;
+  }
+}
+
+async function insertJobs() {
+  const btn = document.getElementById('jobsBtn');
+  btn.disabled = true;
+  btn.textContent = 'Inserting...';
+  try {
+    await fetch('/api/demo2/jobs', { method: 'POST' });
+  } finally {
+    btn.textContent = 'Insert 50 Jobs';
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>

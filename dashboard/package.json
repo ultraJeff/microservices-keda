@@ -1,13 +1,15 @@
 {
-  "name": "job-api",
+  "name": "keda-dashboard",
   "version": "1.0.0",
-  "description": "REST API for submitting jobs to PostgreSQL queue",
+  "description": "Real-time dashboard for KEDA scaling demos",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
+    "@kubernetes/client-node": "^1.1.0",
     "express": "^5.1.0",
+    "kafkajs": "^2.2.4",
     "pg": "^8.20.0"
   }
 }

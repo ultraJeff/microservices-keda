@@ -18,6 +18,7 @@ oc delete -f demo-1-kafka/producer/deployment.yaml 2>/dev/null || true
 oc delete -f demo-1-kafka/consumer/deployment.yaml 2>/dev/null || true
 oc delete -f demo-2-postgresql/web-api/deployment.yaml 2>/dev/null || true
 oc delete -f demo-2-postgresql/worker/deployment.yaml 2>/dev/null || true
+oc delete -f dashboard/deployment.yaml 2>/dev/null || true
 
 info "Removing Kafka Console..."
 oc delete console kafka-console -n keda-demo 2>/dev/null || true
@@ -33,7 +34,7 @@ info "Removing KEDA controller..."
 oc delete -f infrastructure/keda/keda-controller.yaml 2>/dev/null || true
 
 info "Removing build configs..."
-oc delete bc kafka-producer kafka-consumer job-api job-worker -n keda-demo 2>/dev/null || true
+oc delete bc kafka-producer kafka-consumer job-api job-worker dashboard -n keda-demo 2>/dev/null || true
 
 info "Removing namespace..."
 oc delete namespace keda-demo 2>/dev/null || true

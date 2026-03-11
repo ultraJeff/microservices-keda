@@ -100,7 +100,7 @@ info "PostgreSQL is ready"
 
 # Step 7: Deploy KEDA controller
 info "Step 7: Deploying KEDA controller"
-oc create namespace openshift-keda --dry-run=client -o yaml | oc apply -f -
+oc create namespace openshift-keda 2>/dev/null || true
 oc apply -f infrastructure/keda/keda-controller.yaml
 sleep 10
 info "KEDA controller deployed"
@@ -124,16 +124,22 @@ info "Building job-worker..."
 oc new-build --name=job-worker --binary --strategy=docker -n "$NAMESPACE" --to='job-worker:latest' 2>/dev/null || true
 oc start-build job-worker --from-dir=demo-2-postgresql/worker --follow -n "$NAMESPACE"
 
+info "Building dashboard..."
+oc new-build --name=dashboard --binary --strategy=docker -n "$NAMESPACE" --to='dashboard:latest' 2>/dev/null || true
+oc start-build dashboard --from-dir=dashboard --follow -n "$NAMESPACE"
+
 # Step 9: Deploy applications
 info "Step 9: Deploying applications"
 oc apply -f demo-1-kafka/producer/deployment.yaml
 oc apply -f demo-1-kafka/consumer/deployment.yaml
 oc apply -f demo-2-postgresql/web-api/deployment.yaml
 oc apply -f demo-2-postgresql/worker/deployment.yaml
+oc apply -f dashboard/deployment.yaml
 
 # Step 10: Wait for non-scaled apps to be ready
 wait_for_pod "app=kafka-producer" "$NAMESPACE"
 wait_for_pod "app=job-api" "$NAMESPACE"
+wait_for_pod "app=dashboard" "$NAMESPACE"
 
 # Step 11: Apply KEDA ScaledObjects
 info "Step 11: Applying KEDA ScaledObjects"
@@ -147,6 +153,7 @@ info ""
 info "Producer URL:  http://$(oc get route kafka-producer -n $NAMESPACE -o jsonpath='{.spec.host}' 2>/dev/null || echo 'pending...')"
 info "Job API URL:   http://$(oc get route job-api -n $NAMESPACE -o jsonpath='{.spec.host}' 2>/dev/null || echo 'pending...')"
 info "Kafka Console: https://kafka-console.${CLUSTER_DOMAIN:-$(oc get ingresses.config/cluster -o jsonpath='{.spec.domain}')}"
+info "Dashboard:     http://$(oc get route dashboard -n $NAMESPACE -o jsonpath='{.spec.host}' 2>/dev/null || echo 'pending...')"
 info ""
 info "Run ./scripts/demo-1-run.sh for the Kafka demo"
 info "Run ./scripts/demo-2-run.sh for the PostgreSQL demo"

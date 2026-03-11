@@ -17,4 +17,5 @@ spec:
         consumerGroup: order-processors
         topic: orders
         lagThreshold: "10"
+        activationLagThreshold: "5"
         offsetResetPolicy: latest
