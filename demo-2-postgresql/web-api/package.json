@@ -1,0 +1,13 @@
+{
+  "name": "job-api",
+  "version": "1.0.0",
+  "description": "REST API for submitting jobs to PostgreSQL queue",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "pg": "^8.13.0"
+  }
+}

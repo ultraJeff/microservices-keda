@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgresql-credentials
+  namespace: keda-demo
+type: Opaque
+stringData:
+  connection: "postgresql://demo:demo@postgresql.keda-demo.svc:5432/demodb?sslmode=disable"
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: postgresql-trigger-auth
+  namespace: keda-demo
+spec:
+  secretTargetRef:
+    - parameter: connection
+      name: postgresql-credentials
+      key: connection

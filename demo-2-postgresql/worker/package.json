@@ -1,0 +1,12 @@
+{
+  "name": "job-worker",
+  "version": "1.0.0",
+  "description": "Background worker that processes jobs from PostgreSQL queue",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "pg": "^8.13.0"
+  }
+}

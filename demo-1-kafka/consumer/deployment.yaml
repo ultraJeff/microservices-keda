@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-consumer
+  namespace: keda-demo
+  labels:
+    app: kafka-consumer
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: kafka-consumer
+  template:
+    metadata:
+      labels:
+        app: kafka-consumer
+    spec:
+      containers:
+        - name: consumer
+          image: image-registry.openshift-image-registry.svc:5000/keda-demo/kafka-consumer:latest
+          env:
+            - name: KAFKA_BROKERS
+              value: my-cluster-kafka-bootstrap:9092
+            - name: KAFKA_TOPIC
+              value: orders
+            - name: KAFKA_GROUP_ID
+              value: order-processors
+            - name: PROCESSING_TIME_MS
+              value: "500"
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 256Mi
+              cpu: 250m
