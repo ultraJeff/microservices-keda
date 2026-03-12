@@ -92,21 +92,27 @@ spec:
 EOF
 info "Kafka Console deploying at kafka-console.${CLUSTER_DOMAIN}"
 
-# Step 6: Deploy PostgreSQL
-info "Step 6: Deploying PostgreSQL"
+# Step 6: Deploy RabbitMQ
+info "Step 6: Deploying RabbitMQ"
+oc apply -f infrastructure/rabbitmq/deployment.yaml
+wait_for_pod "app=rabbitmq" "$NAMESPACE"
+info "RabbitMQ is ready"
+
+# Step 7: Deploy PostgreSQL
+info "Step 7: Deploying PostgreSQL"
 oc apply -f infrastructure/postgresql/deployment.yaml
 wait_for_pod "app=postgresql" "$NAMESPACE"
 info "PostgreSQL is ready"
 
-# Step 7: Deploy KEDA controller
-info "Step 7: Deploying KEDA controller"
+# Step 8: Deploy KEDA controller
+info "Step 8: Deploying KEDA controller"
 oc create namespace openshift-keda 2>/dev/null || true
 oc apply -f infrastructure/keda/keda-controller.yaml
 sleep 10
 info "KEDA controller deployed"
 
-# Step 8: Build demo app images
-info "Step 8: Building demo app images"
+# Step 9: Build demo app images
+info "Step 9: Building demo app images"
 
 info "Building kafka-producer..."
 oc new-build --name=kafka-producer --binary --strategy=docker -n "$NAMESPACE" --to='kafka-producer:latest' 2>/dev/null || true
@@ -124,36 +130,63 @@ info "Building job-worker..."
 oc new-build --name=job-worker --binary --strategy=docker -n "$NAMESPACE" --to='job-worker:latest' 2>/dev/null || true
 oc start-build job-worker --from-dir=demo-2-postgresql/worker --follow -n "$NAMESPACE"
 
+info "Building notification-bff..."
+oc new-build --name=notification-bff --binary --strategy=docker -n "$NAMESPACE" --to='notification-bff:latest' 2>/dev/null || true
+oc start-build notification-bff --from-dir=demo-3-rabbitmq/bff --follow -n "$NAMESPACE"
+
+info "Building notification-worker..."
+oc new-build --name=notification-worker --binary --strategy=docker -n "$NAMESPACE" --to='notification-worker:latest' 2>/dev/null || true
+oc start-build notification-worker --from-dir=demo-3-rabbitmq/worker --follow -n "$NAMESPACE"
+
+info "Building notification-frontend..."
+oc new-build --name=notification-frontend --binary --strategy=docker -n "$NAMESPACE" --to='notification-frontend:latest' 2>/dev/null || true
+oc start-build notification-frontend --from-dir=demo-3-rabbitmq/frontend --follow -n "$NAMESPACE"
+
 info "Building dashboard..."
 oc new-build --name=dashboard --binary --strategy=docker -n "$NAMESPACE" --to='dashboard:latest' 2>/dev/null || true
 oc start-build dashboard --from-dir=dashboard --follow -n "$NAMESPACE"
 
-# Step 9: Deploy applications
-info "Step 9: Deploying applications"
+# Step 10: Deploy applications
+info "Step 10: Deploying applications"
 oc apply -f demo-1-kafka/producer/deployment.yaml
 oc apply -f demo-1-kafka/consumer/deployment.yaml
 oc apply -f demo-2-postgresql/web-api/deployment.yaml
 oc apply -f demo-2-postgresql/worker/deployment.yaml
-oc apply -f dashboard/deployment.yaml
+oc apply -f demo-3-rabbitmq/bff/deployment.yaml
+oc apply -f demo-3-rabbitmq/worker/deployment.yaml
+oc apply -f demo-3-rabbitmq/frontend/deployment.yaml
 
-# Step 10: Wait for non-scaled apps to be ready
+# Resolve notification MFE route and inject into dashboard deployment
+sleep 3
+NOTIFICATION_MFE_ROUTE="https://$(oc get route notification-frontend -n $NAMESPACE -o jsonpath='{.spec.host}')"
+info "Notification MFE URL: $NOTIFICATION_MFE_ROUTE"
+sed "s|PLACEHOLDER|${NOTIFICATION_MFE_ROUTE}|" dashboard/deployment.yaml | oc apply -f -
+
+# Step 11: Wait for non-scaled apps to be ready
 wait_for_pod "app=kafka-producer" "$NAMESPACE"
 wait_for_pod "app=job-api" "$NAMESPACE"
+wait_for_pod "app=notification-bff" "$NAMESPACE"
+wait_for_pod "app=notification-frontend" "$NAMESPACE"
 wait_for_pod "app=dashboard" "$NAMESPACE"
 
-# Step 11: Apply KEDA ScaledObjects
-info "Step 11: Applying KEDA ScaledObjects"
+# Step 12: Apply KEDA ScaledObjects
+info "Step 12: Applying KEDA ScaledObjects"
 oc apply -f demo-2-postgresql/keda/trigger-auth.yaml
 oc apply -f demo-1-kafka/keda/scaled-object.yaml
 oc apply -f demo-1-kafka/keda/trigger-auth.yaml
 oc apply -f demo-2-postgresql/keda/scaled-object.yaml
+oc apply -f demo-3-rabbitmq/keda/trigger-auth.yaml
+oc apply -f demo-3-rabbitmq/keda/scaled-object.yaml
 
 info "=== Setup Complete ==="
 info ""
-info "Producer URL:  http://$(oc get route kafka-producer -n $NAMESPACE -o jsonpath='{.spec.host}' 2>/dev/null || echo 'pending...')"
-info "Job API URL:   http://$(oc get route job-api -n $NAMESPACE -o jsonpath='{.spec.host}' 2>/dev/null || echo 'pending...')"
-info "Kafka Console: https://kafka-console.${CLUSTER_DOMAIN:-$(oc get ingresses.config/cluster -o jsonpath='{.spec.domain}')}"
-info "Dashboard:     http://$(oc get route dashboard -n $NAMESPACE -o jsonpath='{.spec.host}' 2>/dev/null || echo 'pending...')"
+info "Producer URL:       http://$(oc get route kafka-producer -n $NAMESPACE -o jsonpath='{.spec.host}' 2>/dev/null || echo 'pending...')"
+info "Job API URL:        http://$(oc get route job-api -n $NAMESPACE -o jsonpath='{.spec.host}' 2>/dev/null || echo 'pending...')"
+info "Kafka Console:      https://kafka-console.${CLUSTER_DOMAIN:-$(oc get ingresses.config/cluster -o jsonpath='{.spec.domain}')}"
+info "RabbitMQ Mgmt:      https://$(oc get route rabbitmq-management -n $NAMESPACE -o jsonpath='{.spec.host}' 2>/dev/null || echo 'pending...')"
+info "Notification MFE:   $NOTIFICATION_MFE_ROUTE"
+info "Dashboard:          https://$(oc get route dashboard -n $NAMESPACE -o jsonpath='{.spec.host}' 2>/dev/null || echo 'pending...')"
 info ""
 info "Run ./scripts/demo-1-run.sh for the Kafka demo"
 info "Run ./scripts/demo-2-run.sh for the PostgreSQL demo"
+info "Run ./scripts/demo-3-run.sh for the RabbitMQ / micro-frontend demo"

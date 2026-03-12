@@ -18,6 +18,9 @@ oc delete -f demo-1-kafka/producer/deployment.yaml 2>/dev/null || true
 oc delete -f demo-1-kafka/consumer/deployment.yaml 2>/dev/null || true
 oc delete -f demo-2-postgresql/web-api/deployment.yaml 2>/dev/null || true
 oc delete -f demo-2-postgresql/worker/deployment.yaml 2>/dev/null || true
+oc delete -f demo-3-rabbitmq/bff/deployment.yaml 2>/dev/null || true
+oc delete -f demo-3-rabbitmq/worker/deployment.yaml 2>/dev/null || true
+oc delete -f demo-3-rabbitmq/frontend/deployment.yaml 2>/dev/null || true
 oc delete -f dashboard/deployment.yaml 2>/dev/null || true
 
 info "Removing Kafka Console..."
@@ -27,6 +30,9 @@ info "Removing Kafka cluster..."
 oc delete kafka my-cluster -n keda-demo 2>/dev/null || true
 oc delete kafkatopic orders -n keda-demo 2>/dev/null || true
 
+info "Removing RabbitMQ..."
+oc delete -f infrastructure/rabbitmq/deployment.yaml 2>/dev/null || true
+
 info "Removing PostgreSQL..."
 oc delete -f infrastructure/postgresql/deployment.yaml 2>/dev/null || true
 
@@ -34,7 +40,7 @@ info "Removing KEDA controller..."
 oc delete -f infrastructure/keda/keda-controller.yaml 2>/dev/null || true
 
 info "Removing build configs..."
-oc delete bc kafka-producer kafka-consumer job-api job-worker dashboard -n keda-demo 2>/dev/null || true
+oc delete bc kafka-producer kafka-consumer job-api job-worker notification-bff notification-worker notification-frontend dashboard -n keda-demo 2>/dev/null || true
 
 info "Removing namespace..."
 oc delete namespace keda-demo 2>/dev/null || true

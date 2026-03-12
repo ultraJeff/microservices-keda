@@ -13,6 +13,8 @@ const KAFKA_GROUP = process.env.KAFKA_GROUP || 'order-processors';
 const NAMESPACE = process.env.NAMESPACE || 'keda-demo';
 const PRODUCER_URL = process.env.PRODUCER_URL || 'http://kafka-producer:3000';
 const JOB_API_URL = process.env.JOB_API_URL || 'http://job-api:3000';
+const NOTIFICATION_BFF_URL = process.env.NOTIFICATION_BFF_URL || 'http://notification-bff:3000';
+const NOTIFICATION_MFE_URL = process.env.NOTIFICATION_MFE_URL || '';
 
 const kafka = new Kafka({ clientId: 'dashboard', brokers: KAFKA_BROKERS });
 const admin = kafka.admin();
@@ -86,6 +88,20 @@ async function getRecentJobs() {
   }
 }
 
+async function getRabbitMQStats() {
+  try {
+    const resp = await fetch(`${NOTIFICATION_BFF_URL}/api/queue-stats`);
+    const data = await resp.json();
+    return { messages: data.messages || 0, consumers: data.consumers || 0 };
+  } catch {
+    return { messages: 0, consumers: 0 };
+  }
+}
+
+app.get('/api/config', (_req, res) => {
+  res.json({ notificationMfeUrl: NOTIFICATION_MFE_URL });
+});
+
 app.get('/api/stream', (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -97,12 +113,14 @@ app.get('/api/stream', (req, res) => {
 
   const send = async () => {
     try {
-      const [lag, consumerPods, workerPods, jobs, recentJobs] = await Promise.all([
+      const [lag, consumerPods, workerPods, jobs, recentJobs, rmqStats, notifPods] = await Promise.all([
         getKafkaLag(),
         getPodCount('app=kafka-consumer'),
         getPodCount('app=job-worker'),
         getJobStatus(),
         getRecentJobs(),
+        getRabbitMQStats(),
+        getPodCount('app=notification-worker'),
       ]);
       const data = {
         demo1: {
@@ -112,6 +130,7 @@ app.get('/api/stream', (req, res) => {
             .map(({ receivedAt, ...o }) => ({ ...o, age: Date.now() - receivedAt })),
         },
         demo2: { pods: workerPods, maxPods: 5, jobs, recentJobs },
+        demo3: { pods: notifPods, maxPods: 8, queue: rmqStats },
         timestamp: Date.now(),
       };
       res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -153,6 +172,20 @@ app.post('/api/demo2/jobs', async (_req, res) => {
 app.post('/api/demo2/cleanup', async (_req, res) => {
   try {
     const resp = await fetch(`${JOB_API_URL}/jobs`, { method: 'DELETE' });
+    const data = await resp.json();
+    res.json(data);
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.post('/api/demo3/notify', async (_req, res) => {
+  try {
+    const resp = await fetch(`${NOTIFICATION_BFF_URL}/api/notify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ count: 30, type: 'email' }),
+    });
     const data = await resp.json();
     res.json(data);
   } catch (err) {

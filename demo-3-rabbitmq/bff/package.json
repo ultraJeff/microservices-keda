@@ -1,0 +1,13 @@
+{
+  "name": "notification-bff",
+  "version": "1.0.0",
+  "description": "Backend-for-Frontend for the notification micro-frontend",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "amqplib": "^0.10.7",
+    "express": "^5.1.0"
+  }
+}

@@ -32,6 +32,10 @@ kind: Deployment
 metadata:
   name: postgresql
   namespace: keda-demo
+  labels:
+    app: postgresql
+    app.kubernetes.io/part-of: demo-2-postgresql
+    app.openshift.io/runtime: postgresql
 spec:
   replicas: 1
   selector:

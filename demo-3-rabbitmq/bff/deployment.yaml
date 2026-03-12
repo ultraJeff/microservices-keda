@@ -1,40 +1,34 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: job-api
+  name: notification-bff
   namespace: keda-demo
   labels:
-    app: job-api
-    app.kubernetes.io/part-of: demo-2-postgresql
+    app: notification-bff
+    app.kubernetes.io/part-of: demo-3-rabbitmq
     app.openshift.io/runtime: nodejs
   annotations:
-    app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"Deployment","name":"postgresql"}]'
+    app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"Deployment","name":"rabbitmq"}]'
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: job-api
+      app: notification-bff
   template:
     metadata:
       labels:
-        app: job-api
+        app: notification-bff
     spec:
       containers:
-        - name: api
-          image: image-registry.openshift-image-registry.svc:5000/keda-demo/job-api:latest
+        - name: notification-bff
+          image: image-registry.openshift-image-registry.svc:5000/keda-demo/notification-bff:latest
           ports:
             - containerPort: 3000
           env:
-            - name: DB_HOST
-              value: postgresql
-            - name: DB_PORT
-              value: "5432"
-            - name: DB_NAME
-              value: demodb
-            - name: DB_USER
-              value: demo
-            - name: DB_PASSWORD
-              value: demo
+            - name: RABBITMQ_URL
+              value: amqp://guest:guest@rabbitmq:5672
+            - name: QUEUE_NAME
+              value: notifications
           resources:
             requests:
               memory: 128Mi
@@ -58,11 +52,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: job-api
+  name: notification-bff
   namespace: keda-demo
 spec:
   selector:
-    app: job-api
+    app: notification-bff
   ports:
     - port: 3000
       targetPort: 3000
@@ -70,11 +64,14 @@ spec:
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: job-api
+  name: notification-bff
   namespace: keda-demo
 spec:
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
   to:
     kind: Service
-    name: job-api
+    name: notification-bff
   port:
     targetPort: 3000

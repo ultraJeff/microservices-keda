@@ -1,0 +1,12 @@
+{
+  "name": "notification-frontend",
+  "version": "1.0.0",
+  "description": "Notification micro-frontend — separately deployed UI",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}

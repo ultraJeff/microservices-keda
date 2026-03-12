@@ -12,6 +12,7 @@
     --text: #e2e4ea; --muted: #8b8fa3;
     --kafka: #4fc3f7; --kafka-dim: #1a3a4a;
     --pg: #ab47bc; --pg-dim: #3a1a42;
+    --rmq: #ff7043; --rmq-dim: #3d1f10;
     --green: #66bb6a; --orange: #ffa726; --red: #ef5350;
   }
   body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
@@ -26,7 +27,7 @@
   .status-dot.disconnected { background: var(--red); animation: none; }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 24px 32px; height: calc(100vh - 60px); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; padding: 20px 24px; height: calc(100vh - 60px); }
 
   .panel {
     background: var(--surface); border-radius: 12px; border: 1px solid var(--border);
@@ -40,6 +41,7 @@
   }
   .kafka-badge { background: var(--kafka-dim); color: var(--kafka); }
   .pg-badge { background: var(--pg-dim); color: var(--pg); }
+  .rmq-badge { background: var(--rmq-dim); color: var(--rmq); }
 
   .btn {
     border: none; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600;
@@ -51,6 +53,8 @@
   .btn-kafka:hover:not(:disabled) { background: #81d4fa; }
   .btn-pg { background: var(--pg); color: #fff; }
   .btn-pg:hover:not(:disabled) { background: #ce93d8; }
+  .btn-rmq { background: var(--rmq); color: #fff; }
+  .btn-rmq:hover:not(:disabled) { background: #ff8a65; }
 
   .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .metric-card {
@@ -61,6 +65,7 @@
   .metric-value { font-size: 32px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
   .metric-value.kafka-color { color: var(--kafka); }
   .metric-value.pg-color { color: var(--pg); }
+  .metric-value.rmq-color { color: var(--rmq); }
 
   .pod-grid-wrap { background: var(--bg); border-radius: 8px; padding: 14px 16px; border: 1px solid var(--border); }
   .pod-grid-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; }
@@ -71,6 +76,7 @@
   }
   .pod-slot.active-kafka { background: var(--kafka); border-color: var(--kafka); box-shadow: 0 0 12px rgba(79,195,247,0.3); }
   .pod-slot.active-pg { background: var(--pg); border-color: var(--pg); box-shadow: 0 0 12px rgba(171,71,188,0.3); }
+  .pod-slot.active-rmq { background: var(--rmq); border-color: var(--rmq); box-shadow: 0 0 12px rgba(255,112,67,0.3); }
   .pod-slot.empty { background: transparent; }
 
   .chart-wrap { flex: 1; min-height: 120px; max-height: 180px; position: relative; }
@@ -116,6 +122,17 @@
   .feed-status.completed { background: #1a3320; color: var(--green); }
 
   .feed-empty { color: var(--muted); font-size: 12px; padding: 16px 0; text-align: center; font-style: italic; }
+
+  .mfe-frame-wrap {
+    flex: 1; min-height: 0; border-radius: 8px; overflow: hidden;
+    border: 1px solid var(--rmq); position: relative;
+  }
+  .mfe-frame-wrap iframe { width: 100%; height: 100%; border: none; }
+  .mfe-label {
+    position: absolute; top: 6px; right: 8px; font-size: 8px; font-weight: 700;
+    padding: 2px 6px; border-radius: 6px; background: var(--rmq-dim); color: var(--rmq);
+    text-transform: uppercase; letter-spacing: 0.6px; z-index: 2;
+  }
 </style>
 </head>
 <body>
@@ -178,6 +195,33 @@
       <div class="feed" id="pgFeed"><div class="feed-empty">No jobs yet...</div></div>
     </div>
   </div>
+
+  <!-- Demo 3: RabbitMQ + Micro-Frontend -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">RabbitMQ Notifications <span class="badge rmq-badge">Demo 3</span></div>
+      <button class="btn btn-rmq" id="notifyBtn" onclick="sendNotifications()">Send 30 Notifications</button>
+    </div>
+    <div class="metrics">
+      <div class="metric-card">
+        <div class="metric-label">Worker Pods</div>
+        <div class="metric-value rmq-color" id="rmqPods">0</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Queue Depth</div>
+        <div class="metric-value rmq-color" id="rmqQueue">0</div>
+      </div>
+    </div>
+    <div class="pod-grid-wrap">
+      <div class="pod-grid-label">Replicas (max 8)</div>
+      <div class="pod-grid" id="rmqPodGrid"></div>
+    </div>
+    <div class="chart-wrap"><canvas id="rmqChart"></canvas></div>
+    <div class="mfe-frame-wrap">
+      <span class="mfe-label">Separate Deploy</span>
+      <iframe id="mfeFrame" src="about:blank"></iframe>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -202,6 +246,7 @@ function updatePodGrid(el, count, cls) {
 
 initPodGrid(document.getElementById('kafkaPodGrid'), 10, 'active-kafka');
 initPodGrid(document.getElementById('pgPodGrid'), 5, 'active-pg');
+initPodGrid(document.getElementById('rmqPodGrid'), 8, 'active-rmq');
 
 const chartOpts = (label, color) => ({
   type: 'line',
@@ -249,6 +294,7 @@ const pgChartConfig = {
 
 const kafkaChart = new Chart(document.getElementById('kafkaChart'), chartOpts('Consumer Lag', '#4fc3f7'));
 const pgChart = new Chart(document.getElementById('pgChart'), pgChartConfig);
+const rmqChart = new Chart(document.getElementById('rmqChart'), chartOpts('Queue Depth', '#ff7043'));
 
 function pushData(chart, dsIndex, value) {
   const ds = chart.data.datasets[dsIndex];
@@ -309,6 +355,12 @@ function renderPgFeed(jobs) {
   el.innerHTML = html;
 }
 
+fetch('/api/config').then(r => r.json()).then(cfg => {
+  if (cfg.notificationMfeUrl) {
+    document.getElementById('mfeFrame').src = cfg.notificationMfeUrl;
+  }
+}).catch(() => {});
+
 const dot = document.getElementById('statusDot');
 let reconnectDelay = 1000;
 
@@ -338,6 +390,14 @@ function connect() {
     pushData(pgChart, 2, d.demo2.jobs.completed);
     pgChart.update();
     renderPgFeed(d.demo2.recentJobs);
+
+    if (d.demo3) {
+      document.getElementById('rmqPods').textContent = d.demo3.pods;
+      document.getElementById('rmqQueue').textContent = d.demo3.queue.messages;
+      updatePodGrid(document.getElementById('rmqPodGrid'), d.demo3.pods, 'active-rmq');
+      pushData(rmqChart, 0, d.demo3.queue.messages);
+      rmqChart.update();
+    }
   };
 
   es.onerror = () => {
@@ -370,6 +430,18 @@ async function insertJobs() {
     await fetch('/api/demo2/jobs', { method: 'POST' });
   } finally {
     btn.textContent = 'Insert 50 Jobs';
+    btn.disabled = false;
+  }
+}
+
+async function sendNotifications() {
+  const btn = document.getElementById('notifyBtn');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  try {
+    await fetch('/api/demo3/notify', { method: 'POST' });
+  } finally {
+    btn.textContent = 'Send 30 Notifications';
     btn.disabled = false;
   }
 }

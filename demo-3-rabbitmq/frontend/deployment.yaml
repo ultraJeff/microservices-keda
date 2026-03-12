@@ -1,47 +1,39 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: job-api
+  name: notification-frontend
   namespace: keda-demo
   labels:
-    app: job-api
-    app.kubernetes.io/part-of: demo-2-postgresql
+    app: notification-frontend
+    app.kubernetes.io/part-of: demo-3-rabbitmq
     app.openshift.io/runtime: nodejs
   annotations:
-    app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"Deployment","name":"postgresql"}]'
+    app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"Deployment","name":"notification-bff"}]'
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: job-api
+      app: notification-frontend
   template:
     metadata:
       labels:
-        app: job-api
+        app: notification-frontend
     spec:
       containers:
-        - name: api
-          image: image-registry.openshift-image-registry.svc:5000/keda-demo/job-api:latest
+        - name: notification-frontend
+          image: image-registry.openshift-image-registry.svc:5000/keda-demo/notification-frontend:latest
           ports:
             - containerPort: 3000
           env:
-            - name: DB_HOST
-              value: postgresql
-            - name: DB_PORT
-              value: "5432"
-            - name: DB_NAME
-              value: demodb
-            - name: DB_USER
-              value: demo
-            - name: DB_PASSWORD
-              value: demo
+            - name: BFF_URL
+              value: http://notification-bff:3000
           resources:
             requests:
-              memory: 128Mi
-              cpu: 100m
+              memory: 64Mi
+              cpu: 50m
             limits:
-              memory: 256Mi
-              cpu: 250m
+              memory: 128Mi
+              cpu: 200m
           livenessProbe:
             httpGet:
               path: /health
@@ -58,11 +50,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: job-api
+  name: notification-frontend
   namespace: keda-demo
 spec:
   selector:
-    app: job-api
+    app: notification-frontend
   ports:
     - port: 3000
       targetPort: 3000
@@ -70,11 +62,14 @@ spec:
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: job-api
+  name: notification-frontend
   namespace: keda-demo
 spec:
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
   to:
     kind: Service
-    name: job-api
+    name: notification-frontend
   port:
     targetPort: 3000

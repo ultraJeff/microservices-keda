@@ -38,6 +38,10 @@ metadata:
   namespace: keda-demo
   labels:
     app: dashboard
+    app.kubernetes.io/part-of: keda-dashboard
+    app.openshift.io/runtime: nodejs
+  annotations:
+    app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"Deployment","name":"kafka-producer"},{"apiVersion":"apps/v1","kind":"Deployment","name":"job-api"},{"apiVersion":"apps/v1","kind":"Deployment","name":"notification-bff"},{"apiVersion":"apps/v1","kind":"Deployment","name":"notification-frontend"}]'
 spec:
   replicas: 1
   selector:
@@ -73,6 +77,10 @@ spec:
               value: demo
             - name: DB_PASSWORD
               value: demo
+            - name: NOTIFICATION_BFF_URL
+              value: http://notification-bff:3000
+            - name: NOTIFICATION_MFE_URL
+              value: PLACEHOLDER
           resources:
             requests:
               memory: 128Mi

@@ -5,6 +5,10 @@ metadata:
   namespace: keda-demo
   labels:
     app: kafka-producer
+    app.kubernetes.io/part-of: demo-1-kafka
+    app.openshift.io/runtime: nodejs
+  annotations:
+    app.openshift.io/connects-to: '[{"apiVersion":"kafka.strimzi.io/v1beta2","kind":"Kafka","name":"my-cluster"}]'
 spec:
   replicas: 1
   selector:
