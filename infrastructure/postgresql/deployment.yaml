@@ -16,16 +16,18 @@ metadata:
   name: postgresql-init
   namespace: keda-demo
 data:
-  init.sql: |
-    CREATE TABLE IF NOT EXISTS jobs (
-      id SERIAL PRIMARY KEY,
-      payload JSONB NOT NULL,
-      status VARCHAR(20) NOT NULL DEFAULT 'pending',
-      created_at TIMESTAMP DEFAULT NOW(),
-      started_at TIMESTAMP,
-      completed_at TIMESTAMP
-    );
-    CREATE INDEX idx_jobs_status ON jobs (status);
+  init-db.sh: |
+    psql -d demodb -c "
+      CREATE TABLE IF NOT EXISTS jobs (
+        id SERIAL PRIMARY KEY,
+        payload JSONB NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT NOW(),
+        started_at TIMESTAMP,
+        completed_at TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs (status);
+    "
 ---
 apiVersion: apps/v1
 kind: Deployment
